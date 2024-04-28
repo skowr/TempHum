@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.32
+# TEMPHUM - SKR v0.34
 #
-# last update 14.04.2024
+# last update 28.04.2024
 #
 ##############################################
 
@@ -10,43 +10,43 @@ import network
 import secrets
 import ubinascii
 import ntptime
-import time
+import os
 from machine import Pin
+from machine import reset
 from time import sleep
 from time import time
 import dht
 from umqtt.simple import MQTTClient
 
-# SENSOR CONTROL
-SENSOR1 = True
-SENSOR2 = True
 
-# Main loop frequency in seconds
-MAIN_FREQ = 0.2
+class GLOBAL_CONSTANTS:
 
-# APPLICATION RUN PARAMETERS
-# Sampling period in seconds
-#SAMPL_PERIOD = 60
-SAMPL_PERIOD = 300
-#SAMPL_PERIOD = 5
+    # Main loop frequency in seconds
+    MAIN_FREQ = 0.2
+    
+    # APPLICATION RUN PARAMETERS
+    # Sampling period in seconds
+    #SAMPL_PERIOD = 60
+    SAMPL_PERIOD = 300
+    #SAMPL_PERIOD = 5
+    
+    # Reconnect WIFI ticks count
+    WIFI_RECONNECT = 100
 
-# SAVE TO LOG
-SAVE_TO_LOG = False
 
-# Reconnect WIFI ticks count
-WIFI_RECONNECT = 100
+    # SENSOR CONTROL
+    SENSOR1 = True
+    SENSOR2 = True
+    
+    # SAVE TO LOG
+    SAVE_TO_LOG = True
+    # Max KB size of a log file
+    MAX_LOG_SIZE = 500
+    # Log file name
+    LOG_FILENAME = "temphum.log"        
+    
 
-# WIFI AND MQTT PARAMETERS"
-CLIENT_ID = ubinascii.hexlify(machine.unique_id())
-
-# PINS DEFINITIONS
-sensor1 = dht.DHT11(Pin(0))
-sensor2 = dht.DHT11(Pin(4))
-intled = machine.Pin("LED", machine.Pin.OUT)
-
-wlan = network.WLAN(network.STA_IF)
-
-class App_status():
+class App_status:
     INITIATION = 0
     CONN_WIFI = 1
     WAIT_WIFI = 2
@@ -55,6 +55,7 @@ class App_status():
     CONNECTED = 5
     WAIT_PUBL = 6
     PUBLISH   = 7
+
     
 class LedControl:
     ledstatus = False
@@ -75,25 +76,56 @@ class LedControl:
             
         led_ctrl.ledstatus = self.ledstatus
         intled.value(led_ctrl.ledstatus)
+        
+        
+# INIT PROGRAM        
+
+# WIFI AND MQTT PARAMETERS"
+CLIENT_ID = ubinascii.hexlify(machine.unique_id())
+
+# PINS DEFINITIONS
+sensor1 = dht.DHT11(Pin(0))
+sensor2 = dht.DHT11(Pin(4))
+intled = machine.Pin("LED", machine.Pin.OUT)
+
+wlan = network.WLAN(network.STA_IF)
 
 led_ctrl = LedControl()
 app_stat = App_status.INITIATION
 app_counter = 0
 time_counter = time()
 
+
+def file_exists(filename):
+    try:
+        os.stat(filename)
+        return True
+    except OSError:
+        return False
+
 def log(input):
+    global GLOBAL_CONSTANTS
+    
     s = "[" + str(app_counter) + "] " + input
     print(s)
-    if SAVE_TO_LOG:
-        f = open("temphum.log", "a")
-        f.write(s+"\n")
-        f.close()
+    if GLOBAL_CONSTANTS.SAVE_TO_LOG:        
+        size = 0
+        if file_exists(GLOBAL_CONSTANTS.LOG_FILENAME):            
+            stats = os.stat(GLOBAL_CONSTANTS.LOG_FILENAME)
+            size = stats[6]
+            
+        if size < GLOBAL_CONSTANTS.MAX_LOG_SIZE*1024:
+            f = open(GLOBAL_CONSTANTS.LOG_FILENAME, "a")
+            f.write(s+"\n")
+            f.close()
+
 
 def publish_to_mqtt():
+    global GLOBAL_CONSTANTS
     try:
        
         # SENSOR 1
-        if SENSOR1:
+        if GLOBAL_CONSTANTS.SENSOR1:
             log("Sensor 1 Drewniak")
             sensor1.measure()
             temp = sensor1.temperature()
@@ -107,7 +139,7 @@ def publish_to_mqtt():
         
 
         # SENSOR 2
-        if SENSOR2:
+        if GLOBAL_CONSTANTS.SENSOR2:
             log("Sensor 2 Garden")
             sensor2.measure()
             temp = sensor2.temperature()
@@ -163,22 +195,29 @@ def status_light():
         
     intled.value(led_ctrl.ledstatus)
 
-
     led_ctrl.counter += 1
+    
+def get_free_space():
+    stat = os.statvfs('/')
+    freespace = stat[0] * stat[4] / 1024
+    
+    return freespace
 
 def controller():
     global app_counter
     global app_stat
     global time_counter
-    global mqttClient
-    
+    global mqttClient    
     global wlan
+    
+    global GLOBAL_CONSTANTS
     
     # INIT
     if app_counter == 0:
         log("***  TEMPHUM   ***")
-        log("v 0.32")
-        log(" ")
+        log("v 0.34")
+        log("Space avail : " + str(get_free_space()) + " KB")
+        
         app_stat = App_status.INITIATION
     elif app_counter < 10:
         app_stat = App_status.INITIATION    
@@ -201,14 +240,14 @@ def controller():
                     log("[OK] WiFi connected: " + str(wlan.ifconfig()))                    
                     #set_global_time()                    
                     app_stat = App_status.CONN_MQTT
-                elif led_ctrl.counter > WIFI_RECONNECT:
+                elif led_ctrl.counter > GLOBAL_CONSTANTS.WIFI_RECONNECT:
                     app_stat = App_status.CONN_WIFI
 
             # WIFI CONNECTED
             elif app_stat == App_status.CONN_MQTT:
                 log("Connecting MQTT: Client: " + str(CLIENT_ID) + " , Broker: " + secrets.MQTT_BROKER + " , Port: " + str(secrets.MQQT_PORT))
 
-                mqttClient = MQTTClient(CLIENT_ID, secrets.MQTT_BROKER, secrets.MQQT_PORT, user=secrets.MQTT_USER, password=secrets.MQTT_PASS, keepalive=SAMPL_PERIOD+10)    
+                mqttClient = MQTTClient(CLIENT_ID, secrets.MQTT_BROKER, secrets.MQQT_PORT, user=secrets.MQTT_USER, password=secrets.MQTT_PASS, keepalive=GLOBAL_CONSTANTS.SAMPL_PERIOD+10)    
                 mqttClient.connect()
                 app_stat = App_status.WAIT_MQTT
             
@@ -223,7 +262,7 @@ def controller():
                 
             # WAITING TIME FOR PUBLISHING
             elif app_stat == App_status.WAIT_PUBL:
-                if time() - time_counter > SAMPL_PERIOD:
+                if time() - time_counter > GLOBAL_CONSTANTS.SAMPL_PERIOD:
                     if wlan.isconnected():
                         app_stat = App_status.PUBLISH
                     else:
@@ -245,9 +284,10 @@ def controller():
 
 def main():
     global app_counter
+    global GLOBAL_CONSTANTS
         
     while True:
-        sleep(MAIN_FREQ)
+        sleep(GLOBAL_CONSTANTS.MAIN_FREQ)
         status_light()
         controller()
         
