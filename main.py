@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.34
+# TEMPHUM - SKR v0.36
 #
-# last update 28.04.2024
+# last update 14.05.2024
 #
 ##############################################
 
@@ -157,8 +157,8 @@ def publish_to_mqtt():
 
 
     except OSError as e:
-        log("[ER] Failed to read sensor.")
-        
+        log("[ER] Failed to read or publish sensor. Msg: " + str(e.message) + " , Arg: " + str(e.args))
+                
 
 def connect_wifi():
     log("Connecting WIFI: " + secrets.WIFI_SSID)
@@ -215,7 +215,7 @@ def controller():
     # INIT
     if app_counter == 0:
         log("***  TEMPHUM   ***")
-        log("v 0.34")
+        log("v 0.36")
         log("Space avail : " + str(get_free_space()) + " KB")
         
         app_stat = App_status.INITIATION
