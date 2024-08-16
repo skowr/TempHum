@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.38
+# TEMPHUM - SKR v0.40
 #
-# last update 3.07.2024
+# last update 16.08.2024
 #
 ##############################################
 
@@ -22,6 +22,8 @@ from umqtt.simple import MQTTClient
 
 
 class GLOBAL_CONSTANTS:
+    
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.40"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -49,16 +51,16 @@ class GLOBAL_CONSTANTS:
     
 
 class App_status:
-    INITIATION = 0
-    CONN_WIFI = 1
-    WAIT_WIFI = 2
-    SYNC_TIME = 3
-    CONN_MQTT = 4
-    WAIT_MQTT = 5
-    CONNECTED = 6
-    WAIT_PUBL = 7
-    READ_SENS = 8
-    PUBLISH   = 9
+    INITIATION = 0	# Startup
+    CONN_WIFI = 1	# Establish connection to WiFi
+    WAIT_WIFI = 2	# Wait for WIFI configuration
+    SYNC_TIME = 3	# Try synchronize time
+    CONN_MQTT = 4	# Establish connection to MQTT
+    WAIT_MQTT = 5	# Wait for MQTT
+    CONNECTED = 6	# Fake status after MQTT configuration
+    WAIT_PUBL = 7	# Wait for sensor read
+    READ_SENS = 8	# Read Sensors action
+    PUBLISH   = 9	# Publish Sensors results action
 
     
 class LedControl:
@@ -73,11 +75,19 @@ class LedControl:
         self.ledstatus = not self.ledstatus
         
     def blink(self):
-        for i in range(5):
+        for i in range(10):
             led_ctrl.ledstatus = not led_ctrl.ledstatus
             sleep(0.1)
+            intled.value(led_ctrl.ledstatus)        
+        led_ctrl.ledstatus = self.ledstatus
+        intled.value(led_ctrl.ledstatus)
+        
+    def error_blink(self):
+        for i in range(20):
+            led_ctrl.ledstatus = not led_ctrl.ledstatus
+            sleep(0.05)
             intled.value(led_ctrl.ledstatus)
-            
+        
         led_ctrl.ledstatus = self.ledstatus
         intled.value(led_ctrl.ledstatus)
         
@@ -90,7 +100,7 @@ class DHTSensor:
 
 # INIT PROGRAM        
 
-# WIFI AND MQTT PARAMETERS"
+# WIFI AND MQTT PARAMETERS
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # PINS DEFINITIONS
@@ -142,32 +152,32 @@ def read_sensors():
     # SENSOR 1 OUTSIDE
     if GLOBAL_CONSTANTS.SENSOR_OUT:
         try:
-            log("Sensor 1 Garden")
+            log("[INF] Reading sensor 1 Garden")
             sensor1.measure()
             dhtSensOut.temp = sensor1.temperature()
             dhtSensOut.hum = sensor1.humidity()
             dhtSensOut.read = True
-            log("Drewniak Temperature: %3.1f C" %dhtSensOut.temp)
-            log("Drewniak Humidity: %3.1f %%" %dhtSensOut.hum)
+            log("[OK] Outside Temperature: %3.1f C" %dhtSensOut.temp)
+            log("[OK] Outside Humidity: %3.1f %%" %dhtSensOut.hum)
 
         except OSError as e:
-            log("[ER] Failed to read sensor. : " + str(e.errno))
+            log("[ER] Failed to read outside sensor. : " + str(e.errno))
             dhtSensOut.read = False
             
     # SENSOR 2 INSIDE
     if GLOBAL_CONSTANTS.SENSOR_IN:
 
         try:
-            log("Sensor 2 Drewniak")
+            log("[INF] Reading sensor 2 Drewniak")
             sensor2.measure()
             dhtSensIn.temp = sensor2.temperature()
             dhtSensIn.hum = sensor2.humidity()
             dhtSensIn.read = True
-            log("Outside Temperature: %3.1f C" %dhtSensIn.temp)
-            log("Outside Humidity: %3.1f %%" %dhtSensIn.hum)
+            log("[OK] Inside Temperature: %3.1f C" %dhtSensIn.temp)
+            log("[OK] Inside Humidity: %3.1f %%" %dhtSensIn.hum)
                         
         except OSError as e:
-            log("[ER] Failed to read sensor. : " + str(e.errno))
+            log("[ER] Failed to read inside sensor. : " + str(e.errno))
             dhtSensIn.read = False
             
     return dhtSensIn.read or dhtSensOut.read
@@ -176,15 +186,19 @@ def publish_sensors():
     try:
         if GLOBAL_CONSTANTS.SENSOR_OUT and dhtSensOut.read:
             mqttClient.publish(secrets.MQTT_TOPIC_TEMP_OUT, str(dhtSensOut.temp).encode())
-            log("[OK] MQTT published temperature sensor 1 out")
+            log("[OK] MQTT published temperature sensor 1 (Garden)")
             mqttClient.publish(secrets.MQTT_TOPIC_HUMID_OUT, str(dhtSensOut.hum).encode())
-            log("[OK] MQTT published humidity sensor 1 out")
+            log("[OK] MQTT published humidity sensor 1 (Garden)")
+        else:
+            log("[WRN] No data to publish on sensor 1 (Garden)")
             
         if GLOBAL_CONSTANTS.SENSOR_IN and dhtSensIn.read:
             mqttClient.publish(secrets.MQTT_TOPIC_TEMP_IN, str(dhtSensIn.temp).encode())
-            log("[OK] MQTT published temperature sensor 2 in")
+            log("[OK] MQTT published temperature sensor 2 (Drewniak)")
             mqttClient.publish(secrets.MQTT_TOPIC_HUMID_IN, str(dhtSensIn.hum).encode())
-            log("[OK] MQTT published humidity sensor 2 in")
+            log("[OK] MQTT published humidity sensor 2 (Drewniak)")
+        else:
+            log("[WRN] No data to publish on sensor 2 (Drewniak)")
         
         # Blink to confirm
         led_ctrl.blink()
@@ -195,18 +209,36 @@ def publish_sensors():
     return True
 
 def connect_wifi():
-    log("Connecting WIFI: " + secrets.WIFI_SSID)
+    log("[INF] Connecting WIFI: " + secrets.WIFI_SSID)
     wlan.active(True)
     wlan.connect(secrets.WIFI_SSID, secrets.WIFI_PASS)
 
 def set_global_time():
     try:
-        log("Connecting NTP: " + secrets.NTP_SERVER)
+        log("[INF] Connecting NTP: " + secrets.NTP_SERVER)
         ntptime.host = secrets.NTP_SERVER
         t = localtime()
-        log("Local time after synchronization：" + str(f"{t[0]}.{t[1]}.{t[2]} {t[3]}:{t[4]}:{t[5]}"))
+        log("[OK] Local time after synchronization：" + str(f"{t[0]}.{t[1]}.{t[2]} {t[3]}:{t[4]}:{t[5]}"))
     except:
         log("[ER] Cannot connect time server")
+
+
+def connect_mqtt():
+    global mqttClient
+    
+    try:
+    
+        log("[INF] Connecting MQTT: Client: " + str(CLIENT_ID) + " , Broker: " + secrets.MQTT_BROKER + " , Port: " + str(secrets.MQQT_PORT))
+
+        mqttClient = MQTTClient(CLIENT_ID, secrets.MQTT_BROKER, secrets.MQQT_PORT, user=secrets.MQTT_USER, password=secrets.MQTT_PASS, keepalive=GLOBAL_CONSTANTS.SAMPL_PERIOD+10)    
+        mqttClient.connect()
+        
+        return True
+
+    except:
+        log("[ER] Cannot connect to MQTT")
+        
+        return False
 
 
 def status_light():
@@ -247,7 +279,7 @@ def controller():
     # INIT
     if app_counter == 0:
         log("***  TEMPHUM   ***")
-        log("v 0.38")
+        log(GLOBAL_CONSTANTS.PROGRAM_VERSION)
         log("Space avail : " + str(get_free_space()) + " KB")
         
         app_stat = App_status.INITIATION
@@ -274,22 +306,23 @@ def controller():
                 elif led_ctrl.counter > GLOBAL_CONSTANTS.WIFI_RECONNECT:
                     app_stat = App_status.CONN_WIFI
 
-            # SYNC GLOBAL TIME
-            
+            # SYNC GLOBAL TIME            
             elif app_stat == App_status.SYNC_TIME:
                 set_global_time()
                 app_stat = App_status.CONN_MQTT            
             
             # CONNECT TO MQTT
             elif app_stat == App_status.CONN_MQTT:
-                log("Connecting MQTT: Client: " + str(CLIENT_ID) + " , Broker: " + secrets.MQTT_BROKER + " , Port: " + str(secrets.MQQT_PORT))
-
-                mqttClient = MQTTClient(CLIENT_ID, secrets.MQTT_BROKER, secrets.MQQT_PORT, user=secrets.MQTT_USER, password=secrets.MQTT_PASS, keepalive=GLOBAL_CONSTANTS.SAMPL_PERIOD+10)    
-                mqttClient.connect()
+                if connect_mqtt():
                 
-                log("Waiting for connection")
-                app_stat = App_status.WAIT_MQTT
+                    log("[INF] Waiting for connection")
+                    app_stat = App_status.WAIT_MQTT
+                else:
+                    log("[ER] MQTT not connected. Trying to reconnect")
+                    time_counter = time()
+                    led_ctrl.error_blink()
                             
+                        
             # CONNECTED TO MQTT
             elif app_stat == App_status.WAIT_MQTT:
                 app_stat = App_status.CONNECTED
@@ -308,28 +341,39 @@ def controller():
                         log("[ER] Connectivity error. Reconnecting")
                         led_ctrl.reset_counter()
                         app_stat = App_status.CONN_WIFI
+                        time_counter = time()
                     
-            # READING SENSORS
-            
+            # READING SENSORS            
             elif app_stat == App_status.READ_SENS:
                 if read_sensors():
                     # publish
                     app_stat = App_status.PUBLISH
-                    
+                else:
+                    # Failed to read sensors
+                    log("[ER] Cannot read sensors. Attempting again in next iteration")
+                    led_ctrl.reset_counter()
+                    led_ctrl.error_blink()
+                    app_stat = App_status.WAIT_PUBL
+                    time_counter = time()
+                   
             
             # PUBLISHING ACTION
             elif app_stat == App_status.PUBLISH:
                 if publish_sensors():
                     app_stat = App_status.WAIT_PUBL
-                    time_counter = time()
                 else:
+                    # Failed to publish.
+                    log("[ER] Publishing error. Retrying to reconnect to MQTT and publish later")
                     led_ctrl.reset_counter()
-                    app_stat = App_status.CONN_WIFI
-                    
+                    app_stat = App_status.CONN_MQTT
+
+                time_counter = time()
         
         except OSError as e:
             log("[ER] Error : " + str(e.errno))            
             led_ctrl.reset_counter()
+            led_ctrl.error_blink()
+            time_counter = time()
             app_stat = App_status.CONN_WIFI
             
 
