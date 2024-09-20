@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.40
+# TEMPHUM - SKR v0.41
 #
-# last update 16.08.2024
+# last update 20.09.2024
 #
 ##############################################
 
@@ -23,7 +23,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.40"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.41"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -136,7 +136,7 @@ def log(input):
     print(s)
     if GLOBAL_CONSTANTS.SAVE_TO_LOG:        
         size = 0
-        if file_exists(GLOBAL_CONSTANTS.LOG_FILENAME):            
+        if file_exists(GLOBAL_CONSTANTS.LOG_FILENAME):
             stats = os.stat(GLOBAL_CONSTANTS.LOG_FILENAME)
             size = stats[6]
             
@@ -144,6 +144,8 @@ def log(input):
             f = open(GLOBAL_CONSTANTS.LOG_FILENAME, "a")
             f.write(s+"\n")
             f.close()
+        else:
+            os.remove(GLOBAL_CONSTANTS.LOG_FILENAME)
 
 
 def read_sensors():
