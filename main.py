@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.41
+# TEMPHUM - SKR v0.42
 #
-# last update 20.09.2024
+# last update 10.10.2024
 #
 ##############################################
 
@@ -23,7 +23,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.41"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.42"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -38,16 +38,22 @@ class GLOBAL_CONSTANTS:
     WIFI_RECONNECT = 100
 
 
-    # SENSOR CONTROL
+    # Sensors control
     SENSOR_OUT = True # Outside Garden
     SENSOR_IN = True # Inside
+    
+    # Sensors calibration
+    SENSOR_OUT_TEMP_CAL = 2
+    SENSOR_OUT_HUM_CAL = 0
+    SENSOR_IN_TEMP_CAL = -1
+    SENSOR_IN_HUM_CAL = 12
     
     # SAVE TO LOG
     SAVE_TO_LOG = True
     # Max KB size of a log file
     MAX_LOG_SIZE = 500
     # Log file name
-    LOG_FILENAME = "temphum.log"        
+    LOG_FILENAME = "temphum.log"
     
 
 class App_status:
@@ -93,8 +99,8 @@ class LedControl:
         
 
 class DHTSensor:
-    temp = 0
-    hum = 0
+    temp = 0 # Temperature
+    hum = 0 # Humuidity
     read = False
 
 
@@ -156,8 +162,8 @@ def read_sensors():
         try:
             log("[INF] Reading sensor 1 Garden")
             sensor1.measure()
-            dhtSensOut.temp = sensor1.temperature()
-            dhtSensOut.hum = sensor1.humidity()
+            dhtSensOut.temp = sensor1.temperature() + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
+            dhtSensOut.hum = sensor1.humidity() + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
             dhtSensOut.read = True
             log("[OK] Outside Temperature: %3.1f C" %dhtSensOut.temp)
             log("[OK] Outside Humidity: %3.1f %%" %dhtSensOut.hum)
@@ -172,8 +178,8 @@ def read_sensors():
         try:
             log("[INF] Reading sensor 2 Drewniak")
             sensor2.measure()
-            dhtSensIn.temp = sensor2.temperature()
-            dhtSensIn.hum = sensor2.humidity()
+            dhtSensIn.temp = sensor2.temperature() + GLOBAL_CONSTANTS.SENSOR_IN_TEMP_CAL
+            dhtSensIn.hum = sensor2.humidity() + GLOBAL_CONSTANTS.SENSOR_IN_HUM_CAL
             dhtSensIn.read = True
             log("[OK] Inside Temperature: %3.1f C" %dhtSensIn.temp)
             log("[OK] Inside Humidity: %3.1f %%" %dhtSensIn.hum)
