@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.42
+# TEMPHUM - SKR v0.43
 #
-# last update 10.10.2024
+# last update 11.11.2024
 #
 ##############################################
 
@@ -23,7 +23,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.42"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.43"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -54,6 +54,9 @@ class GLOBAL_CONSTANTS:
     MAX_LOG_SIZE = 500
     # Log file name
     LOG_FILENAME = "temphum.log"
+    
+    # Work without constant blinking
+    DARK_MODE = True
     
 
 class App_status:
@@ -260,11 +263,15 @@ def status_light():
         led_ctrl.ledstatus = ((led_ctrl.counter / 2) % 2)
                 
     if app_stat == App_status.WAIT_PUBL:
-        led_ctrl.ledstatus = ((led_ctrl.counter / 6) % 2)
+        if GLOBAL_CONSTANTS.DARK_MODE:
+            led_ctrl.ledstatus = False
+        else:
+            led_ctrl.ledstatus = ((led_ctrl.counter / 6) % 2)
         
     if app_stat == App_status.PUBLISH:        
         led_ctrl.ledstatus = False
         
+
     intled.value(led_ctrl.ledstatus)
 
     led_ctrl.counter += 1
