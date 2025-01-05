@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.43
+# TEMPHUM - SKR v0.44
 #
-# last update 11.11.2024
+# last update 05.01.2025
 #
 ##############################################
 
@@ -23,7 +23,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.43"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.44"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -43,10 +43,10 @@ class GLOBAL_CONSTANTS:
     SENSOR_IN = True # Inside
     
     # Sensors calibration
-    SENSOR_OUT_TEMP_CAL = 2
-    SENSOR_OUT_HUM_CAL = 0
-    SENSOR_IN_TEMP_CAL = -1
-    SENSOR_IN_HUM_CAL = 12
+    SENSOR_OUT_TEMP_CAL = -0.4
+    SENSOR_OUT_HUM_CAL = -11
+    SENSOR_IN_TEMP_CAL = -2
+    SENSOR_IN_HUM_CAL = 4
     
     # SAVE TO LOG
     SAVE_TO_LOG = True
@@ -57,6 +57,7 @@ class GLOBAL_CONSTANTS:
     
     # Work without constant blinking
     DARK_MODE = True
+    #DARK_MODE = False
     
 
 class App_status:
@@ -113,8 +114,9 @@ class DHTSensor:
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # PINS DEFINITIONS
-sensor1 = dht.DHT11(Pin(0))
-sensor2 = dht.DHT11(Pin(4))
+#sensor_out = dht.DHT11(Pin(0))
+sensor_out = dht.DHT22(Pin(0))
+sensor_in = dht.DHT11(Pin(4))
 intled = machine.Pin("LED", machine.Pin.OUT)
 
 wlan = network.WLAN(network.STA_IF)
@@ -139,9 +141,9 @@ def log(input):
     
 
     t = localtime()
-    u = str(f"{t[0]}.{t[1]}.{t[2]} {t[3]}:{t[4]}:{t[5]}")
+    u = str(f"{t[0]}.{t[1]:02d}.{t[2]:02d} {t[3]:02d}:{t[4]:02d}:{t[5]:02d}")
 
-    s = "[" + u + " | " + str(app_counter) + "] " + input
+    s = "[" + u + " | " + str(f"{app_counter:06d}") + "] " + input
     print(s)
     if GLOBAL_CONSTANTS.SAVE_TO_LOG:        
         size = 0
@@ -163,10 +165,10 @@ def read_sensors():
     # SENSOR 1 OUTSIDE
     if GLOBAL_CONSTANTS.SENSOR_OUT:
         try:
-            log("[INF] Reading sensor 1 Garden")
-            sensor1.measure()
-            dhtSensOut.temp = sensor1.temperature() + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
-            dhtSensOut.hum = sensor1.humidity() + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
+            log("[INF] Reading sensor 1 Outside")
+            sensor_out.measure()
+            dhtSensOut.temp = sensor_out.temperature() + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
+            dhtSensOut.hum = sensor_out.humidity() + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
             dhtSensOut.read = True
             log("[OK] Outside Temperature: %3.1f C" %dhtSensOut.temp)
             log("[OK] Outside Humidity: %3.1f %%" %dhtSensOut.hum)
@@ -179,10 +181,10 @@ def read_sensors():
     if GLOBAL_CONSTANTS.SENSOR_IN:
 
         try:
-            log("[INF] Reading sensor 2 Drewniak")
-            sensor2.measure()
-            dhtSensIn.temp = sensor2.temperature() + GLOBAL_CONSTANTS.SENSOR_IN_TEMP_CAL
-            dhtSensIn.hum = sensor2.humidity() + GLOBAL_CONSTANTS.SENSOR_IN_HUM_CAL
+            log("[INF] Reading sensor 2 Inside")
+            sensor_in.measure()
+            dhtSensIn.temp = sensor_in.temperature() + GLOBAL_CONSTANTS.SENSOR_IN_TEMP_CAL
+            dhtSensIn.hum = sensor_in.humidity() + GLOBAL_CONSTANTS.SENSOR_IN_HUM_CAL
             dhtSensIn.read = True
             log("[OK] Inside Temperature: %3.1f C" %dhtSensIn.temp)
             log("[OK] Inside Humidity: %3.1f %%" %dhtSensIn.hum)
@@ -197,19 +199,19 @@ def publish_sensors():
     try:
         if GLOBAL_CONSTANTS.SENSOR_OUT and dhtSensOut.read:
             mqttClient.publish(secrets.MQTT_TOPIC_TEMP_OUT, str(dhtSensOut.temp).encode())
-            log("[OK] MQTT published temperature sensor 1 (Garden)")
+            log("[OK] MQTT published temperature sensor 1 (Outside)")
             mqttClient.publish(secrets.MQTT_TOPIC_HUMID_OUT, str(dhtSensOut.hum).encode())
-            log("[OK] MQTT published humidity sensor 1 (Garden)")
+            log("[OK] MQTT published humidity sensor 1 (Outside)")
         else:
-            log("[WRN] No data to publish on sensor 1 (Garden)")
+            log("[WRN] No data to publish on sensor 1 (Outside)")
             
         if GLOBAL_CONSTANTS.SENSOR_IN and dhtSensIn.read:
             mqttClient.publish(secrets.MQTT_TOPIC_TEMP_IN, str(dhtSensIn.temp).encode())
-            log("[OK] MQTT published temperature sensor 2 (Drewniak)")
+            log("[OK] MQTT published temperature sensor 2 (Inside)")
             mqttClient.publish(secrets.MQTT_TOPIC_HUMID_IN, str(dhtSensIn.hum).encode())
-            log("[OK] MQTT published humidity sensor 2 (Drewniak)")
+            log("[OK] MQTT published humidity sensor 2 (Inside)")
         else:
-            log("[WRN] No data to publish on sensor 2 (Drewniak)")
+            log("[WRN] No data to publish on sensor 2 (Inside)")
         
         # Blink to confirm
         led_ctrl.blink()
@@ -406,7 +408,6 @@ def main():
 main()
 
 # TODO
-# CSV Saving to disk
 # Refactoring and error handling
 
 # REFERENCES
