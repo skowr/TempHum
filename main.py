@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.44
+# TEMPHUM - SKR v0.47
 #
-# last update 05.01.2025
+# last update 13.02.2026
 #
 ##############################################
 
@@ -23,7 +23,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.44"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.47"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -33,7 +33,13 @@ class GLOBAL_CONSTANTS:
     #SAMPL_PERIOD = 60
     SAMPL_PERIOD = 300
     #SAMPL_PERIOD = 5
-    
+
+    # Reset period
+    # RESET_PERIOD = 0  # don't reset
+    RESET_PERIOD = 60*60*24*2
+    # RESET_PERIOD = 60 * 5
+
+
     # Reconnect WIFI ticks count
     WIFI_RECONNECT = 100
 
@@ -43,10 +49,10 @@ class GLOBAL_CONSTANTS:
     SENSOR_IN = True # Inside
     
     # Sensors calibration
-    SENSOR_OUT_TEMP_CAL = -0.4
-    SENSOR_OUT_HUM_CAL = -11
-    SENSOR_IN_TEMP_CAL = -2
-    SENSOR_IN_HUM_CAL = 4
+    SENSOR_OUT_TEMP_CAL = 0
+    SENSOR_OUT_HUM_CAL = 0
+    SENSOR_IN_TEMP_CAL = 0
+    SENSOR_IN_HUM_CAL = 0
     
     # SAVE TO LOG
     SAVE_TO_LOG = True
@@ -114,9 +120,8 @@ class DHTSensor:
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # PINS DEFINITIONS
-#sensor_out = dht.DHT11(Pin(0))
 sensor_out = dht.DHT22(Pin(0))
-sensor_in = dht.DHT11(Pin(4))
+sensor_in = dht.DHT22(Pin(4))
 intled = machine.Pin("LED", machine.Pin.OUT)
 
 wlan = network.WLAN(network.STA_IF)
@@ -125,6 +130,7 @@ led_ctrl = LedControl()
 app_stat = App_status.INITIATION
 app_counter = 0
 time_counter = time()
+reset_counter = time()
 
 dhtSensIn = DHTSensor()
 dhtSensOut = DHTSensor()
@@ -288,6 +294,7 @@ def controller():
     global app_counter
     global app_stat
     global time_counter
+    global reset_counter
     global mqttClient    
     global wlan
     
@@ -385,6 +392,12 @@ def controller():
                     app_stat = App_status.CONN_MQTT
 
                 time_counter = time()
+                
+            # RESET ACTION
+            if GLOBAL_CONSTANTS.RESET_PERIOD > 0:
+                if time() - reset_counter > GLOBAL_CONSTANTS.RESET_PERIOD:
+                    log("[INF] *** Reset Action ***")
+                    machine.reset()                            
         
         except OSError as e:
             log("[ER] Error : " + str(e.errno))            
@@ -406,9 +419,6 @@ def main():
         app_counter += 1
         
 main()
-
-# TODO
-# Refactoring and error handling
 
 # REFERENCES
 # https://alanedwardes.com/blog/posts/pico-home-assistant-motion-temperature-sensor/
