@@ -36,13 +36,10 @@ class GLOBAL_CONSTANTS:
 
     # Reset period
     # RESET_PERIOD = 0  # don't reset
-    RESET_PERIOD = 60*60*24*2
-    # RESET_PERIOD = 60 * 5
-
+    RESET_PERIOD = 60*60*24*2 # 2 days
 
     # Reconnect WIFI ticks count
     WIFI_RECONNECT = 100
-
 
     # Sensors control
     SENSOR_OUT = True # Outside Garden
