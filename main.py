@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.47
+# TEMPHUM - SKR v0.5
 #
-# last update 13.02.2026
+# last update 04.06.2026
 #
 ##############################################
 
@@ -12,18 +12,19 @@ import ubinascii
 import ntptime
 import os
 import time
+import bme280_float as bme280
+import dht
 from machine import Pin
 from machine import reset
 from time import sleep
 from time import time
 from time import localtime
-import dht
 from umqtt.simple import MQTTClient
 
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.47"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.5"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -48,8 +49,9 @@ class GLOBAL_CONSTANTS:
     # Sensors calibration
     SENSOR_OUT_TEMP_CAL = 0
     SENSOR_OUT_HUM_CAL = 0
-    SENSOR_IN_TEMP_CAL = 0
-    SENSOR_IN_HUM_CAL = 0
+    SENSOR_OUT_PRESS_CAL = 0
+    SENSOR_IN_TEMP_CAL = -1.3
+    SENSOR_IN_HUM_CAL = -8.0
     
     # SAVE TO LOG
     SAVE_TO_LOG = True
@@ -62,7 +64,6 @@ class GLOBAL_CONSTANTS:
     DARK_MODE = True
     #DARK_MODE = False
     
-
 class App_status:
     INITIATION = 0	# Startup
     CONN_WIFI = 1	# Establish connection to WiFi
@@ -110,6 +111,12 @@ class DHTSensor:
     hum = 0 # Humuidity
     read = False
 
+class BMESensor:
+    temp = 0 # Temperature
+    hum = 0 # Humuidity
+    press = 0 # Pressure
+    read = False
+    
 
 # INIT PROGRAM        
 
@@ -117,8 +124,11 @@ class DHTSensor:
 CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 # PINS DEFINITIONS
-sensor_out = dht.DHT22(Pin(0))
 sensor_in = dht.DHT22(Pin(4))
+
+i2c = machine.I2C(1, scl=machine.Pin(7), sda=machine.Pin(6), freq=400000)
+sensor_bme = bme280.BME280(i2c=i2c)
+
 intled = machine.Pin("LED", machine.Pin.OUT)
 
 wlan = network.WLAN(network.STA_IF)
@@ -130,7 +140,8 @@ time_counter = time()
 reset_counter = time()
 
 dhtSensIn = DHTSensor()
-dhtSensOut = DHTSensor()
+#dhtSensOut = DHTSensor()
+bmeSensOut = BMESensor()
 
 def file_exists(filename):
     try:
@@ -169,16 +180,18 @@ def read_sensors():
     if GLOBAL_CONSTANTS.SENSOR_OUT:
         try:
             log("[INF] Reading sensor 1 Outside")
-            sensor_out.measure()
-            dhtSensOut.temp = sensor_out.temperature() + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
-            dhtSensOut.hum = sensor_out.humidity() + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
-            dhtSensOut.read = True
-            log("[OK] Outside Temperature: %3.1f C" %dhtSensOut.temp)
-            log("[OK] Outside Humidity: %3.1f %%" %dhtSensOut.hum)
+            bmeSensOut.temp, bmeSensOut.press, bmeSensOut.hum = sensor_bme.read_compensated_data()
+            bmeSensOut.temp += GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
+            bmeSensOut.press /= 100
+            bmeSensOut.hum += GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
+            bmeSensOut.read = True
+            log("[OK] Outside Temperature: %3.1f C" %bmeSensOut.temp)
+            log("[OK] Outside Humidity: %3.1f %%" %bmeSensOut.hum)
+            log("[OK] Outside Pressure: %3.1f hPa" %bmeSensOut.press)
 
         except OSError as e:
             log("[ER] Failed to read outside sensor. : " + str(e.errno))
-            dhtSensOut.read = False
+            bmeSensOut.read = False
             
     # SENSOR 2 INSIDE
     if GLOBAL_CONSTANTS.SENSOR_IN:
@@ -196,14 +209,14 @@ def read_sensors():
             log("[ER] Failed to read inside sensor. : " + str(e.errno))
             dhtSensIn.read = False
             
-    return dhtSensIn.read or dhtSensOut.read
+    return dhtSensIn.read or bmeSensOut.read
 
 def publish_sensors():
     try:
-        if GLOBAL_CONSTANTS.SENSOR_OUT and dhtSensOut.read:
-            mqttClient.publish(secrets.MQTT_TOPIC_TEMP_OUT, str(dhtSensOut.temp).encode())
+        if GLOBAL_CONSTANTS.SENSOR_OUT and bmeSensOut.read:
+            mqttClient.publish(secrets.MQTT_TOPIC_TEMP_OUT, str(bmeSensOut.temp).encode())
             log("[OK] MQTT published temperature sensor 1 (Outside)")
-            mqttClient.publish(secrets.MQTT_TOPIC_HUMID_OUT, str(dhtSensOut.hum).encode())
+            mqttClient.publish(secrets.MQTT_TOPIC_HUMID_OUT, str(bmeSensOut.hum).encode())
             log("[OK] MQTT published humidity sensor 1 (Outside)")
         else:
             log("[WRN] No data to publish on sensor 1 (Outside)")
@@ -299,7 +312,7 @@ def controller():
     
     # INIT
     if app_counter == 0:
-        log("***  TEMPHUM   ***")
+        log("***  TEMPHUMPRES   ***")
         log(GLOBAL_CONSTANTS.PROGRAM_VERSION)
         log("Space avail : " + str(get_free_space()) + " KB")
         
@@ -416,10 +429,3 @@ def main():
         app_counter += 1
         
 main()
-
-# REFERENCES
-# https://alanedwardes.com/blog/posts/pico-home-assistant-motion-temperature-sensor/
-# https://www.donskytech.com/umqtt-simple-micropython-tutorial/
-# https://mpython.readthedocs.io/en/v2.2.1/library/mPython/umqtt.simple.html
-# https://randomnerdtutorials.com/micropython-mqtt-esp32-esp8266/
-# https://opensource.com/article/21/2/home-assistant-custom-sensors
