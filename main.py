@@ -1,8 +1,8 @@
 ##############################################
 #
-# TEMPHUM - SKR v0.5
+# TEMPHUM - SKR v0.6
 #
-# last update 04.06.2026
+# last update 05.06.2026
 #
 ##############################################
 
@@ -14,6 +14,8 @@ import os
 import time
 import bme280_float as bme280
 import dht
+import network
+import mrequests as requests
 from machine import Pin
 from machine import reset
 from time import sleep
@@ -24,7 +26,7 @@ from umqtt.simple import MQTTClient
 
 class GLOBAL_CONSTANTS:
     
-    PROGRAM_VERSION = "TEMPHUM - SKR v0.5"
+    PROGRAM_VERSION = "TEMPHUM - SKR v0.6"
 
     # Main loop frequency in seconds
     MAIN_FREQ = 0.2
@@ -172,6 +174,14 @@ def log(input):
         else:
             os.remove(GLOBAL_CONSTANTS.LOG_FILENAME)
 
+def url_encode(string):
+    encoded_string = ''
+    for char in string:
+        if char.isalpha() or char.isdigit() or char in '-._~':
+            encoded_string += char
+        else:
+            encoded_string += '%' + '{:02X}'.format(ord(char))
+    return encoded_string
 
 def read_sensors():
     global GLOBAL_CONSTANTS
@@ -181,9 +191,9 @@ def read_sensors():
         try:
             log("[INF] Reading sensor 1 Outside")
             bmeSensOut.temp, bmeSensOut.press, bmeSensOut.hum = sensor_bme.read_compensated_data()
-            bmeSensOut.temp += GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
-            bmeSensOut.press /= 100
-            bmeSensOut.hum += GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
+            bmeSensOut.temp = round(bmeSensOut.temp, 1) + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
+            bmeSensOut.press = round(bmeSensOut.press / 100, 1)
+            bmeSensOut.hum = round(bmeSensOut.hum, 1) + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
             bmeSensOut.read = True
             log("[OK] Outside Temperature: %3.1f C" %bmeSensOut.temp)
             log("[OK] Outside Humidity: %3.1f %%" %bmeSensOut.hum)
@@ -211,13 +221,15 @@ def read_sensors():
             
     return dhtSensIn.read or bmeSensOut.read
 
-def publish_sensors():
+def mqtt_publish_sensors():
     try:
         if GLOBAL_CONSTANTS.SENSOR_OUT and bmeSensOut.read:
             mqttClient.publish(secrets.MQTT_TOPIC_TEMP_OUT, str(bmeSensOut.temp).encode())
             log("[OK] MQTT published temperature sensor 1 (Outside)")
             mqttClient.publish(secrets.MQTT_TOPIC_HUMID_OUT, str(bmeSensOut.hum).encode())
             log("[OK] MQTT published humidity sensor 1 (Outside)")
+            mqttClient.publish(secrets.MQTT_TOPIC_PRESS_OUT, str(bmeSensOut.press).encode())
+            log("[OK] MQTT published pressure sensor 1 (Outside)")
         else:
             log("[WRN] No data to publish on sensor 1 (Outside)")
             
@@ -236,6 +248,24 @@ def publish_sensors():
         log("[ER] Failed to publish sensor. : " + str(e.errno))
         return False
     return True
+
+def quest_publish_sensors():
+    query = f"INSERT INTO temphumpres(timestamp,internal_temp,internal_humidity,external_temp,external_humidity,external_pressure) VALUES(now(),{str(dhtSensIn.temp)},{str(dhtSensIn.hum)},{str(bmeSensOut.temp)},{str(bmeSensOut.hum)},{str(bmeSensOut.press)})"
+    
+    log("[INF] QuestDB Query: " + query)
+    full_url = secrets.QUESTDB_ADDR + "/exec?query="+url_encode(query)
+    log("[INF] QuestDB API Call: " + full_url)
+    
+    try:
+        requests.get(url=full_url, auth=(secrets.QUESTDB_USER, secrets.QUESTDB_PASS))
+        log("[OK] QuestDB reading published")
+        return True
+    except Exception as error:
+        if str(error) == "Unsupported types for __add__: 'str', 'bytes'":
+            return True
+        else:
+            print("[ERR] General error: ",str(error))
+            return False    
 
 def connect_wifi():
     log("[INF] Connecting WIFI: " + secrets.WIFI_SSID)
@@ -393,13 +423,15 @@ def controller():
             
             # PUBLISHING ACTION
             elif app_stat == App_status.PUBLISH:
-                if publish_sensors():
+                if mqtt_publish_sensors():
                     app_stat = App_status.WAIT_PUBL
                 else:
                     # Failed to publish.
                     log("[ER] Publishing error. Retrying to reconnect to MQTT and publish later")
                     led_ctrl.reset_counter()
                     app_stat = App_status.CONN_MQTT
+
+                quest_publish_sensors()
 
                 time_counter = time()
                 
