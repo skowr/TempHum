@@ -51,9 +51,9 @@ class GLOBAL_CONSTANTS:
     # Sensors calibration
     SENSOR_OUT_TEMP_CAL = 0
     SENSOR_OUT_HUM_CAL = 0
-    SENSOR_OUT_PRESS_CAL = 0
-    SENSOR_IN_TEMP_CAL = -1.3
-    SENSOR_IN_HUM_CAL = -8.0
+    SENSOR_OUT_PRESS_CAL = 43.7
+    SENSOR_IN_TEMP_CAL = -1.95
+    SENSOR_IN_HUM_CAL = -6.7
     
     # SAVE TO LOG
     SAVE_TO_LOG = True
@@ -192,7 +192,7 @@ def read_sensors():
             log("[INF] Reading sensor 1 Outside")
             bmeSensOut.temp, bmeSensOut.press, bmeSensOut.hum = sensor_bme.read_compensated_data()
             bmeSensOut.temp = round(bmeSensOut.temp, 1) + GLOBAL_CONSTANTS.SENSOR_OUT_TEMP_CAL
-            bmeSensOut.press = round(bmeSensOut.press / 100, 1)
+            bmeSensOut.press = round(bmeSensOut.press / 100, 1) + GLOBAL_CONSTANTS.SENSOR_OUT_PRESS_CAL
             bmeSensOut.hum = round(bmeSensOut.hum, 1) + GLOBAL_CONSTANTS.SENSOR_OUT_HUM_CAL
             bmeSensOut.read = True
             log("[OK] Outside Temperature: %3.1f C" %bmeSensOut.temp)
